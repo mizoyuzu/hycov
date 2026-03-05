@@ -12,9 +12,9 @@ typedef void (*origOnSwipeUpdate)(void*, IPointer::SSwipeUpdateEvent e);
 typedef void (*origCWindow_onUnmap)(void*);
 typedef void (*origStartAnim)(void*, bool in, bool left, bool instant);
 typedef void (*origFullscreenActive)(std::string args);
-typedef void (*origOnKeyboardKey)(void*, std::any e, SP<IKeyboard> pKeyboard);
-typedef void (*origCInputManager_mouseMoveUnified)(void* , uint32_t time, bool refocus);
-typedef void (*origCInputManager_onMouseButton)(void*, IPointer::SButtonEvent e);
+typedef void (*origOnKeyboardKey)(void*, const IKeyboard::SKeyEvent&, SP<IKeyboard>);
+typedef void (*origCInputManager_mouseMoveUnified)(void*, uint32_t, bool, bool, std::optional<Vector2D>);
+typedef void (*origCInputManager_onMouseButton)(void*, IPointer::SButtonEvent);
 
 static double gesture_dx,gesture_previous_dx;
 static double gesture_dy,gesture_previous_dy;
@@ -134,9 +134,9 @@ static void toggle_hotarea(int x_root, int y_root)
   }
 }
 
-static void hkCInputManager_mouseMoveUnified(void* thisptr, uint32_t time, bool refocus)
+static void hkCInputManager_mouseMoveUnified(void* thisptr, uint32_t time, bool refocus, bool mouse, std::optional<Vector2D> overridePos)
 {
-  (*(origCInputManager_mouseMoveUnified)g_hycov_pCInputManager_mouseMoveUnifiedHook->m_original)(thisptr, time, refocus);
+  (*(origCInputManager_mouseMoveUnified)g_hycov_pCInputManager_mouseMoveUnifiedHook->m_original)(thisptr, time, refocus, mouse, overridePos);
 
   Vector2D   mouseCoords        = g_pInputManager->getMouseCoordsInternal();
   const auto MOUSECOORDSFLOORED = mouseCoords.floor();
@@ -167,10 +167,10 @@ static void hkCInputManager_onMouseButton(void* thisptr, IPointer::SButtonEvent 
         Vector2D mouseCoords = g_pInputManager->getMouseCoordsInternal();
         focusedWindow = g_pCompositor->vectorToWindowUnified(mouseCoords, 0, 0);
         if (focusedWindow) {
-            Desktop::focusState()->fullWindowFocus(focusedWindow);
+            Desktop::focusState()->fullWindowFocus(focusedWindow, Desktop::FOCUS_REASON_CLICK);
         }
     }
-    
+
     if (!focusedWindow) {
       (*(origCInputManager_onMouseButton)g_hycov_pCInputManager_onMouseButtonHook->m_original)(thisptr, e);
       return;
@@ -189,47 +189,9 @@ static void hkCInputManager_onMouseButton(void* thisptr, IPointer::SButtonEvent 
   (*(origCInputManager_onMouseButton)g_hycov_pCInputManager_onMouseButtonHook->m_original)(thisptr, e);
 }
 
-void hkOnMouseButton(void* self, SCallbackInfo& info, std::any data)
+void hkOnMouseButton(void* self, std::any data)
 {
-  auto e = std::any_cast<IPointer::SButtonEvent>(data);
-  
-  if (!g_hycov_isOverView) {
-    return;
-  }
-  
-  if (e.button != BTN_LEFT && e.button != BTN_RIGHT) {
-    return;
-  }
-  
-  if (e.state != WL_POINTER_BUTTON_STATE_PRESSED) {
-    return;
-  }
-  
-  if (g_hycov_click_in_cursor) {
-    g_pInputManager->refocus();
-  }
-
-  auto focusedWindow = Desktop::focusState()->window();
-  
-  if (!focusedWindow) {
-    Vector2D mouseCoords = g_pInputManager->getMouseCoordsInternal();
-    focusedWindow = g_pCompositor->vectorToWindowUnified(mouseCoords, 0, 0);
-    if (focusedWindow) {
-      Desktop::focusState()->fullWindowFocus(focusedWindow);
-    }
-  }
-  
-  if (!focusedWindow) {
-    return;
-  }
-
-  info.cancelled = true;
-
-  if (e.button == BTN_LEFT) {
-    dispatch_toggleoverview("internalToggle");
-  } else if (e.button == BTN_RIGHT) {
-    g_pCompositor->closeWindow(focusedWindow);
-  }
+  // deprecated - handled via EventBus callbacks
 }
 
 
@@ -289,14 +251,12 @@ static void hkStartAnim(void* thisptr,bool in, bool left, bool instant = false) 
   }
 }
 
-static void hkOnKeyboardKey(void* thisptr,std::any event, SP<IKeyboard> pKeyboard) {
+static void hkOnKeyboardKey(void* thisptr, const IKeyboard::SKeyEvent& event, SP<IKeyboard> pKeyboard) {
 
   (*(origOnKeyboardKey)g_hycov_pOnKeyboardKeyHook->m_original)(thisptr, event, pKeyboard);
 
-  auto e = std::any_cast<IKeyboard::SKeyEvent>(event);
-  // hycov_log(LOG,"alt key,keycode:{}",e.keycode);
-  if(g_hycov_enable_alt_release_exit && g_hycov_isOverView && e.state == WL_KEYBOARD_KEY_STATE_RELEASED) {
-    if (!isKeyReleaseToggleExitOverviewHit(e,pKeyboard))
+  if(g_hycov_enable_alt_release_exit && g_hycov_isOverView && event.state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+    if (!isKeyReleaseToggleExitOverviewHit(event,pKeyboard))
       return;
     dispatch_leaveoverview("");
     hycov_log(LOG,"alt key release toggle leave overview");
@@ -330,20 +290,23 @@ static void hkFullscreenActive(std::string args) {
   }
 }
 
-void hkHyprDwindleLayout_recalculateMonitor(void* thisptr,const int& ID) {
+void hkHyprDwindleLayout_recalculateMonitor(void* thisptr) {
   ;
 }
 
-void hkHyprMasterLayout_recalculateMonitor(void* thisptr,const int& ID) {
+void hkHyprMasterLayout_recalculateMonitor(void* thisptr) {
   ;
 }
 
-void hkHyprDwindleLayout_recalculateWindow(void* thisptr,CWindow* pWindow) {
-  ;
-}
-
-void hkSDwindleNodeData_recalcSizePosRecursive(void* thisptr,bool force, bool horizontalOverride, bool verticalOverride) {
-  ;
+typedef void (*origCLayoutManager_recalculateMonitor)(void*, PHLMONITOR);
+void hkCLayoutManager_recalculateMonitor(void* thisptr, PHLMONITOR pMonitor) {
+  if (g_hycov_isOverView) {
+    if (pMonitor) {
+      g_hycov_OvGridLayout->recalculateMonitorById(pMonitor->m_id);
+    }
+    return;
+  }
+  (*(origCLayoutManager_recalculateMonitor)g_hycov_pCLayoutManager_recalculateMonitorHook->m_original)(thisptr, pMonitor);
 }
 
 void hkCKeybindManager_toggleGroup(std::string args) {
@@ -356,25 +319,20 @@ void hkCKeybindManager_moveOutOfGroup(std::string args) {
 
 void hkCKeybindManager_changeGroupActive(std::string args) {
     const auto PWINDOW = Desktop::focusState()->window();
-    PHLWINDOW pTargetWindow;
-    if (!PWINDOW)
+    if (!PWINDOW || !PWINDOW->m_group)
         return;
 
-    if (!PWINDOW->m_groupData.pNextWindow.lock())
+    auto& group = PWINDOW->m_group;
+    if (group->size() <= 1)
         return;
 
-    if (PWINDOW->m_groupData.pNextWindow.lock() == PWINDOW)
-        return;
-
-    auto pNode =  g_hycov_OvGridLayout->getNodeFromWindow(PWINDOW);
+    auto pNode = g_hycov_OvGridLayout->getNodeFromWindow(PWINDOW);
     if (!pNode)
-      return;
+        return;
 
-    if (args != "b" && args != "prev") {
-        pTargetWindow = PWINDOW->m_groupData.pNextWindow.lock();
-    } else {
-        pTargetWindow = PWINDOW->getGroupPrevious();
-    }  
+    bool forward = (args != "b" && args != "prev");
+    group->moveCurrent(forward);
+    PHLWINDOW pTargetWindow = group->current();
 
     hycov_log(LOG,"changeGroupActive,pTargetWindow:{}",pTargetWindow);
 
@@ -385,8 +343,7 @@ void hkCKeybindManager_changeGroupActive(std::string args) {
 
     pNode->pWindow = pTargetWindow;
     pNode->pWindow->m_workspace = g_pCompositor->getWorkspaceByID(pNode->workspaceID);
-    
-    PWINDOW->setGroupCurrent(pTargetWindow);
+
     g_hycov_OvGridLayout->applyNodeDataToWindow(pNode);
 }
 
@@ -423,79 +380,66 @@ void registerGlobalEventHook()
   //  hook function of keypress
   g_hycov_pOnKeyboardKeyHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&CInputManager::onKeyboardKey, (void*)&hkOnKeyboardKey);
 
-  // layotu reculate
-  g_hycov_pHyprDwindleLayout_recalculateMonitorHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&CHyprDwindleLayout::recalculateMonitor, (void*)&hkHyprDwindleLayout_recalculateMonitor);
-  g_hycov_pHyprMasterLayout_recalculateMonitorHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&CHyprMasterLayout::recalculateMonitor, (void*)&hkHyprMasterLayout_recalculateMonitor);
-  g_hycov_pHyprDwindleLayout_recalculateWindowHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&CHyprDwindleLayout::recalculateWindow, (void*)&hkHyprDwindleLayout_recalculateWindow);
-  g_hycov_pSDwindleNodeData_recalcSizePosRecursiveHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&SDwindleNodeData::recalcSizePosRecursive, (void*)&hkSDwindleNodeData_recalcSizePosRecursive);
+  // layout recalculate hooks: intercept during overview
+  g_hycov_pHyprDwindleLayout_recalculateMonitorHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&Layout::Tiled::CDwindleAlgorithm::recalculate, (void*)&hkHyprDwindleLayout_recalculateMonitor);
+  g_hycov_pHyprMasterLayout_recalculateMonitorHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&Layout::Tiled::CMasterAlgorithm::recalculate, (void*)&hkHyprMasterLayout_recalculateMonitor);
+  g_hycov_pCLayoutManager_recalculateMonitorHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&Layout::CLayoutManager::recalculateMonitor, (void*)&hkCLayoutManager_recalculateMonitor);
+  // Permanently activate the CLayoutManager hook (it checks g_hycov_isOverView internally)
+  g_hycov_pCLayoutManager_recalculateMonitorHook->hook();
 
 
   //mouse
   g_hycov_pCInputManager_mouseMoveUnifiedHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&CInputManager::mouseMoveUnified, (void*)&hkCInputManager_mouseMoveUnified);
 
-  // Guard scrolling follow-focus callback while in overview.
-  // This avoids layout-owned activeWindow handlers from fighting ovgrid geometry.
-  // WARNING: This cancels ALL activeWindow events during overview when using the scrolling
-  // layout. Other plugins listening to this event will also be blocked.
-  g_hycov_pActiveWindowGuardCallback = HyprlandAPI::registerCallbackDynamic(PHANDLE, "activeWindow", [](void*, SCallbackInfo& info, std::any) {
-    if (!g_hycov_scrolling_guard_activewindow) {
-      return;
-    }
-    if (!g_hycov_isOverView || !g_hycov_compat_scrolling_active) {
-      return;
-    }
+  // Active window guard: window.active event is not cancellable in 0.54+
+  // Scrolling compat guard removed - use layout hook approach instead
 
-    info.cancelled = true;
-  });
-
-  //mousebutton - use dynamic callback (safe approach, doesn't corrupt mouse input)
+  //mousebutton - use EventBus (safe approach, doesn't corrupt mouse input)
   if(g_hycov_enable_click_action) {
-    static auto pMouseButtonCallback = HyprlandAPI::registerCallbackDynamic(PHANDLE, "mouseButton", [](void* self, SCallbackInfo& info, std::any data) {
-      auto e = std::any_cast<IPointer::SButtonEvent>(data);
-      
+    static CHyprSignalListener pMouseButtonListener = Event::bus()->m_events.input.mouse.button.listen([](const IPointer::SButtonEvent& e, Event::SCallbackInfo& info) {
       if (!g_hycov_isOverView) {
         return;
       }
-      
+
       if (e.state != WL_POINTER_BUTTON_STATE_PRESSED) {
         if (g_hycov_isDragging && e.button == BTN_LEFT) {
           Vector2D mouseCoords = g_pInputManager->getMouseCoordsInternal();
           auto targetMonitor = g_pCompositor->getMonitorFromVector(mouseCoords);
-          
+
           if (g_hycov_draggedWindow && targetMonitor && targetMonitor->m_id != g_hycov_dragStartMonitor) {
             // Save for pending move AFTER overview exits
             g_hycov_pendingMoveWindow = g_hycov_draggedWindow;
             g_hycov_pendingMoveMonitor = targetMonitor;
             hycov_log(LOG, "Drag release: pending move to monitor {}", targetMonitor->m_id);
           }
-          
+
           g_hycov_isDragging = false;
           g_hycov_draggedWindow = nullptr;
-          
+
           dispatch_toggleoverview("internalToggle");
           info.cancelled = true;
         }
         return;
       }
-      
+
       if (e.button != BTN_LEFT && e.button != BTN_RIGHT) {
         return;
       }
-      
+
       if (g_hycov_click_in_cursor) {
         g_pInputManager->refocus();
       }
 
       auto focusedWindow = Desktop::focusState()->window();
-      
+
       if (!focusedWindow) {
         Vector2D mouseCoords = g_pInputManager->getMouseCoordsInternal();
         focusedWindow = g_pCompositor->vectorToWindowUnified(mouseCoords, 0, 0);
         if (focusedWindow) {
-          Desktop::focusState()->fullWindowFocus(focusedWindow);
+          Desktop::focusState()->fullWindowFocus(focusedWindow, Desktop::FOCUS_REASON_CLICK);
         }
       }
-      
+
       if (!focusedWindow) {
         return;
       }
@@ -505,7 +449,7 @@ void registerGlobalEventHook()
       if (e.button == BTN_LEFT) {
         Vector2D mouseCoords = g_pInputManager->getMouseCoordsInternal();
         auto currentMonitor = g_pCompositor->getMonitorFromVector(mouseCoords);
-        
+
         g_hycov_isDragging = true;
         g_hycov_draggedWindow = focusedWindow;
         g_hycov_dragStartPos = mouseCoords;
@@ -514,82 +458,38 @@ void registerGlobalEventHook()
         g_pCompositor->closeWindow(focusedWindow);
       }
     });
-    
-    // Register mouse move callback for visual dragging
-    static auto pMouseMoveCallback = HyprlandAPI::registerCallbackDynamic(PHANDLE, "mouseMove", [](void* self, SCallbackInfo& info, std::any data) {
+
+    // Register mouse move listener for visual dragging
+    static CHyprSignalListener pMouseMoveListener = Event::bus()->m_events.input.mouse.move.listen([](const Vector2D& mouseCoords, Event::SCallbackInfo&) {
       if (!g_hycov_isDragging || !g_hycov_draggedWindow) {
         return;
       }
-      
-      Vector2D mouseCoords = g_pInputManager->getMouseCoordsInternal();
+
       Vector2D delta = mouseCoords - g_hycov_dragStartPos;
-      
-      // Cursor mouse drag, PLEASE WORK PLEASE PLEASE PLEASE
+
+      // Cursor mouse drag
       Vector2D newPos = g_hycov_draggedWindow->m_position + delta;
       g_hycov_draggedWindow->m_position = newPos;
       *g_hycov_draggedWindow->m_realPosition = newPos;
       g_hycov_draggedWindow->m_realPosition->warp();
       g_hycov_dragStartPos = mouseCoords;
-      
-      // Try to update multi-monitor render on drag, meh it might work even if it isnt the most beautiful solution
+
+      // Try to update multi-monitor render on drag
       auto currentMonitor = g_pCompositor->getMonitorFromVector(mouseCoords);
       if (currentMonitor && g_hycov_draggedWindow->m_monitor.get() != currentMonitor.get()) {
         g_hycov_draggedWindow->m_monitor = currentMonitor;
       }
-      
+
       g_pHyprRenderer->damageWindow(g_hycov_draggedWindow);
     });
-    
-    hycov_log(LOG, "hycov: Registered mouseButton callback (dynamic)");
+
+    hycov_log(LOG, "hycov: Registered mouseButton/mouseMove EventBus listeners");
   }
 
-  // Register keyPress callback for alt-release 
-  static auto pKeyPressCallback = HyprlandAPI::registerCallbackDynamic(PHANDLE, "keyPress", [](void* self, SCallbackInfo& info, std::any data) {
-    // Read config value dynamically to see if we bypass dumbass caching
-    static const auto *pEnableAltReleaseExit = (Hyprlang::INT* const*)(HyprlandAPI::getConfigValue(PHANDLE, "plugin:hycov:enable_alt_release_exit")->getDataStaticPtr());
-    static const auto *pAltReplaceKey = (Hyprlang::STRING const*)(HyprlandAPI::getConfigValue(PHANDLE, "plugin:hycov:alt_replace_key")->getDataStaticPtr());
-    
-    const bool altReleaseEnabled = **pEnableAltReleaseExit;
-    
-    // Early exit if feature disabled or not in overview
-    if (!altReleaseEnabled || !g_hycov_isOverView) {
-      return;
-    }
 
-    // Extract keyboard and event from the data map
-    auto dataMap = std::any_cast<std::unordered_map<std::string, std::any>>(data);
-    auto pKeyboard = std::any_cast<SP<IKeyboard>>(dataMap["keyboard"]);
-    auto event = std::any_cast<IKeyboard::SKeyEvent>(dataMap["event"]);
-
-    if (event.state != WL_KEYBOARD_KEY_STATE_RELEASED) {
-      return;
-    }
-
-    std::string altKey = *pAltReplaceKey;
-    int xkbKeycode = event.keycode + 8;
-    
-    // numeric keycode match
-    bool matched = false;
-    if (isNumber(altKey) && std::stoi(altKey) > 9 && std::stoi(altKey) == xkbKeycode) {
-      matched = true;
-    } else if (altKey.find("code:") == 0 && isNumber(altKey.substr(5)) && std::stoi(altKey.substr(5)) == xkbKeycode) {
-      matched = true;
-    } else {
-      // symbolic keyname match
-      std::string keyname = getKeynameFromKeycode(event, pKeyboard);
-      if (!keyname.empty() && keyname == altKey) {
-        matched = true;
-      }
-    }
-
-    if (!matched) {
-      return;
-    }
-
-    hycov_log(LOG, "[hycov] Alt key released (keycode {}), exiting overview", xkbKeycode);
-    dispatch_leaveoverview("");
-  });
-  hycov_log(LOG, "hycov: Registered keyPress callback for alt-release exit");
+  // Keyboard alt-release exit via permanent function hook
+  g_hycov_pOnKeyboardKeyHook->hook();
+  hycov_log(LOG, "hycov: Registered keyboard hook for alt-release exit");
 
   //changeGroupActive
   g_hycov_pCKeybindManager_changeGroupActiveHook = HyprlandAPI::createFunctionHook(PHANDLE, (void*)&CKeybindManager::changeGroupActive, (void*)&hkCKeybindManager_changeGroupActive);
