@@ -16,9 +16,17 @@
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
 #include <hyprland/src/managers/KeybindManager.hpp>
-#include <hyprland/src/managers/LayoutManager.hpp>
+#include <hyprland/src/layout/LayoutManager.hpp>
+#include <hyprland/src/layout/algorithm/Algorithm.hpp>
+#include <hyprland/src/layout/algorithm/TiledAlgorithm.hpp>
+#include <hyprland/src/layout/algorithm/tiled/dwindle/DwindleAlgorithm.hpp>
+#include <hyprland/src/layout/algorithm/tiled/master/MasterAlgorithm.hpp>
+#include <hyprland/src/layout/supplementary/WorkspaceAlgoMatcher.hpp>
+#include <hyprland/src/layout/space/Space.hpp>
+#include <hyprland/src/desktop/view/Group.hpp>
 #include <hyprland/src/managers/EventManager.hpp>
-#include <hyprland/src/managers/HookSystemManager.hpp>
+#include <hyprland/src/plugins/HookSystem.hpp>
+#include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/devices/Keyboard.hpp>
 #include <hyprland/src/devices/IPointer.hpp>
@@ -68,7 +76,7 @@ inline int g_hycov_scrolling_guard_activewindow;
 inline int g_hycov_scrolling_failsafe;
 inline bool g_hycov_compat_scrolling_active = false;
 inline std::string g_hycov_overview_source_layout;
-inline SP<HOOK_CALLBACK_FN> g_hycov_pActiveWindowGuardCallback;
+inline SP<HOOK_CALLBACK_FN> g_hycov_pActiveWindowGuardCallback; // deprecated, unused in 0.54+
 inline bool g_hycov_scrolling_follow_focus_overridden = false;
 inline int g_hycov_scrolling_follow_focus_backup = 1;
 
@@ -91,8 +99,7 @@ inline CFunctionHook* g_hycov_pFullscreenActiveHook = nullptr;
 inline CFunctionHook* g_hycov_pOnKeyboardKeyHook = nullptr;
 inline CFunctionHook* g_hycov_pHyprDwindleLayout_recalculateMonitorHook = nullptr;
 inline CFunctionHook* g_hycov_pHyprMasterLayout_recalculateMonitorHook = nullptr;
-inline CFunctionHook* g_hycov_pHyprDwindleLayout_recalculateWindowHook = nullptr;
-inline CFunctionHook* g_hycov_pSDwindleNodeData_recalcSizePosRecursiveHook = nullptr;
+inline CFunctionHook* g_hycov_pCLayoutManager_recalculateMonitorHook = nullptr;
 inline CFunctionHook* g_hycov_pCInputManager_onMouseButtonHook = nullptr;
 inline CFunctionHook* g_hycov_pCKeybindManager_changeGroupActiveHook = nullptr;  
 inline CFunctionHook* g_hycov_pCKeybindManager_toggleGroupHook = nullptr;
