@@ -1,6 +1,5 @@
 #pragma once
 
-#include <hyprland/src/layout/IHyprLayout.hpp>
 #include <hyprland/src/SharedDefs.hpp>
 #include <utility>
 
@@ -45,28 +44,12 @@ struct SOldLayoutRecordNodeData
 };
 
 
-class OvGridLayout : public IHyprLayout
+class OvGridLayout
 {
 public:
-  virtual void onWindowCreatedTiling(PHLWINDOW , eDirection direction = DIRECTION_DEFAULT);
-  virtual void onWindowRemovedTiling(PHLWINDOW );
-  virtual void onWindowRemoved(PHLWINDOW );
-  virtual bool isWindowTiled(PHLWINDOW );
-  virtual PHLWINDOW getNextWindowCandidate(PHLWINDOW);
-  virtual void recalculateMonitor(const MONITORID &);
-  virtual void recalculateWindow(PHLWINDOW );
-  virtual void resizeActiveWindow(const Vector2D &, eRectCorner corner = CORNER_NONE, PHLWINDOW pWindow = nullptr);
-  virtual void fullscreenRequestForWindow(PHLWINDOW , const eFullscreenMode, const eFullscreenMode);
-  virtual std::any layoutMessage(SLayoutMessageHeader, std::string);
-  virtual SWindowRenderLayoutHints requestRenderHints(PHLWINDOW );
-  virtual void switchWindows(PHLWINDOW , PHLWINDOW );
-  virtual void alterSplitRatio(PHLWINDOW , float, bool);
-  virtual std::string getLayoutName();
-  virtual Vector2D predictSizeForNewWindowTiled();
-  virtual void replaceWindowDataWith(PHLWINDOW from, PHLWINDOW to);
-  virtual void moveWindowTo(PHLWINDOW, const std::string& direction, bool silent = false);
-  virtual void onEnable();
-  virtual void onDisable();
+  void beginOverview();
+  void onWindowCreatedTilingInternal(PHLWINDOW pWindow);
+  void removeWindowFromOverview(PHLWINDOW pWindow);
   void applyNodeDataToWindow(SOvGridNodeData *);
   void calculateWorkspace(const WORKSPACEID &);
   int getNodesNumOnWorkspace(const WORKSPACEID &);
@@ -74,10 +57,11 @@ public:
   SOldLayoutRecordNodeData *getOldLayoutRecordNodeFromWindow(PHLWINDOW );
   void resizeNodeSizePos(SOvGridNodeData *, int, int, int, int);
   void moveWindowToWorkspaceSilent(PHLWINDOW , const WORKSPACEID &);
-  std::list<SOvGridNodeData> m_lOvGridNodesData; 
-  std::list<SOldLayoutRecordNodeData> m_lSOldLayoutRecordNodeData; 
+  std::list<SOvGridNodeData> m_lOvGridNodesData;
+  std::list<SOldLayoutRecordNodeData> m_lSOldLayoutRecordNodeData;
   std::pair<int, int> moveWindowToSourceWorkspace();
   void changeToActivceSourceWorkspace();
   void removeOldLayoutData(PHLWINDOW pWindow);
+  void recalculateMonitorById(const MONITORID &monid);
 private:
 };
