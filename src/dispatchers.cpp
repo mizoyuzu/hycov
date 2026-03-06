@@ -229,34 +229,44 @@ PHLWINDOW direction_select(std::string arg){
 	// Get current window position
   	int sel_x = pTempClient->m_realPosition->goal().x;
   	int sel_y = pTempClient->m_realPosition->goal().y;
-  	long long int distance = LLONG_MAX;;
-  		  if (pTempCWindows[_i]->m_realPosition->goal().y < sel_y && pTempCWindows[_i]->m_realPosition->goal().x == sel_x) {
-  		    int dis_x = pTempCWindows[_i]->m_realPosition->goal().x - sel_x;
-  		    int dis_y = pTempCWindows[_i]->m_realPosition->goal().y - sel_y;
-  		    long long int tmp_distance = dis_x * dis_x + dis_y * dis_y; 
-  		    if (tmp_distance < distance) {
-  		      distance = tmp_distance;
-  		      pTempFocusCWindows = pTempCWindows[_i];
-  		    }
-  		  }
-  		}
-		// if find nothing above 
-		// find again(is unlimited to x)
-		if(!pTempFocusCWindows){
-  			for (int _i = 0; _i <= last; _i++) {
-  			  if (pTempCWindows[_i]->m_realPosition->goal().y < sel_y ) {
-  			    int dis_x = pTempCWindows[_i]->m_realPosition->goal().x - sel_x;
-  			    int dis_y = pTempCWindows[_i]->m_realPosition->goal().y - sel_y;
-  			    long long int tmp_distance = dis_x * dis_x + dis_y * dis_y; 
-  			    if (tmp_distance < distance) {
-  			      distance = tmp_distance;
-  			      pTempFocusCWindows = pTempCWindows[_i];
-  			    }
-  			  }
-  			}		
+  	long long int distance = LLONG_MAX;
+
+	const auto direction = parseShiftArg(arg);
+	if (!direction) {
+		delete[] pTempCWindows;
+		return nullptr;
+	}
+
+	switch (*direction) {
+	case ShiftDirection::Up:
+		for (int _i = 0; _i <= last; _i++) {
+			if (pTempCWindows[_i]->m_realPosition->goal().y < sel_y && pTempCWindows[_i]->m_realPosition->goal().x == sel_x) {
+				int dis_x = pTempCWindows[_i]->m_realPosition->goal().x - sel_x;
+				int dis_y = pTempCWindows[_i]->m_realPosition->goal().y - sel_y;
+				long long int tmp_distance = dis_x * dis_x + dis_y * dis_y;
+				if (tmp_distance < distance) {
+					distance = tmp_distance;
+					pTempFocusCWindows = pTempCWindows[_i];
+				}
+			}
 		}
-  		break;
-  	case ShiftDirection::Down:
+
+		// If nothing is aligned on x axis, retry without x constraint.
+		if (!pTempFocusCWindows) {
+			for (int _i = 0; _i <= last; _i++) {
+				if (pTempCWindows[_i]->m_realPosition->goal().y < sel_y) {
+					int dis_x = pTempCWindows[_i]->m_realPosition->goal().x - sel_x;
+					int dis_y = pTempCWindows[_i]->m_realPosition->goal().y - sel_y;
+					long long int tmp_distance = dis_x * dis_x + dis_y * dis_y;
+					if (tmp_distance < distance) {
+						distance = tmp_distance;
+						pTempFocusCWindows = pTempCWindows[_i];
+					}
+				}
+			}
+		}
+		break;
+	case ShiftDirection::Down:
   		for (int _i = 0; _i <= last; _i++) {
   		  if (pTempCWindows[_i]->m_realPosition->goal().y > sel_y && pTempCWindows[_i]->m_realPosition->goal().x == sel_x) {
   		    int dis_x = pTempCWindows[_i]->m_realPosition->goal().x - sel_x;
@@ -268,7 +278,7 @@ PHLWINDOW direction_select(std::string arg){
   		    }
   		  }
   		}
-		// Second pass without x constraint
+		// Second pass without x constraint.
 		if(!pTempFocusCWindows){
   			for (int _i = 0; _i <= last; _i++) {
   			  if (pTempCWindows[_i]->m_realPosition->goal().y > sel_y ) {
@@ -295,7 +305,7 @@ PHLWINDOW direction_select(std::string arg){
   		    }
   		  }
   		}
-		// Second pass without y constraint
+		// Second pass without y constraint.
 		if(!pTempFocusCWindows){
   			for (int _i = 0; _i <= last; _i++) {
   			  if (pTempCWindows[_i]->m_realPosition->goal().x < sel_x) {
@@ -322,7 +332,7 @@ PHLWINDOW direction_select(std::string arg){
   		    }
   		  }
   		}
-		// Second pass without y constraint
+		// Second pass without y constraint.
 		if(!pTempFocusCWindows){
   			for (int _i = 0; _i <= last; _i++) {
   			  if (pTempCWindows[_i]->m_realPosition->goal().x > sel_x) {
